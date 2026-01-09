@@ -2,6 +2,7 @@ import os
 import base64
 import streamlit as st
 from dotenv import load_dotenv
+from PIL import Image
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, AIMessage
@@ -10,7 +11,6 @@ from langchain_core.messages import HumanMessage, AIMessage
 # Load secrets
 # --------------------------------------------------
 load_dotenv()
-
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 if not ANTHROPIC_API_KEY:
     st.error("Missing ANTHROPIC_API_KEY. Add it in Streamlit Cloud Secrets or a .env file.")
@@ -22,7 +22,7 @@ if not ANTHROPIC_API_KEY:
 st.set_page_config(
     page_title="Multimodal Image Q&A with Claude",
     page_icon="🔍",
-    layout="wide"
+    layout="wide",
 )
 
 st.title("🔍 Multimodal Image Q&A with Claude")
@@ -33,27 +33,45 @@ st.caption("Anthropic Claude + LangChain • Vision Q&A")
 # --------------------------------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
 if "current_image" not in st.session_state:
     st.session_state.current_image = None
 
 # --------------------------------------------------
 # Helpers
 # --------------------------------------------------
+def detect_media_type_from_bytes(uploaded_file) -> str:
+    """
+    Detect the real image format from bytes (do NOT trust uploaded_file.type).
+    Returns: 'image/jpeg' or 'image/png'
+    """
+    try:
+        img = Image.open(uploaded_file)
+        fmt = (img.format or "").upper()
+    except Exception:
+        # If Pillow fails, fall back to extension
+        name = (uploaded_file.name or "").lower()
+        if name.endswith(".png"):
+            return "image/png"
+        if name.endswith(".jpg") or name.endswith(".jpeg"):
+            return "image/jpeg"
+        raise ValueError("Could not detect image type. Please upload a PNG or JPG.")
+
+    if fmt == "PNG":
+        return "image/png"
+    if fmt in ("JPEG", "JPG"):
+        return "image/jpeg"
+
+    raise ValueError(f"Unsupported image format: {fmt}. Please upload a PNG or JPG.")
+
+
 def encode_image(uploaded_file):
     """
-    Strict encoder for Anthropic:
-    - Only PNG or JPEG
-    - media_type must match bytes exactly
+    Encode bytes to base64 and return (base64_data, media_type)
+    Media type is verified from the file bytes to avoid Anthropic 400 errors.
     """
-    media_type = uploaded_file.type.lower()
-
-    if media_type == "image/jpg":
-        media_type = "image/jpeg"
-
-    if media_type not in ("image/jpeg", "image/png"):
-        raise ValueError("Only PNG and JPEG images are supported.")
-
+    # IMPORTANT: Image.open() moves the file pointer; reset it before reading bytes
+    media_type = detect_media_type_from_bytes(uploaded_file)
+    uploaded_file.seek(0)
     data = base64.b64encode(uploaded_file.getvalue()).decode("utf-8")
     return data, media_type
 
@@ -61,7 +79,6 @@ def encode_image(uploaded_file):
 def reset_chat_on_new_image(uploaded_file):
     if uploaded_file is None:
         return
-
     if st.session_state.current_image != uploaded_file.name:
         st.session_state.current_image = uploaded_file.name
         st.session_state.messages = []
@@ -77,13 +94,13 @@ model = st.selectbox(
         "claude-3-sonnet-20240229",
         "claude-3-opus-20240229",
     ],
-    index=0
+    index=0,
 )
 
 chat = ChatAnthropic(
     model=model,
     temperature=0.7,
-    max_tokens=800
+    max_tokens=800,
 )
 
 # --------------------------------------------------
@@ -91,18 +108,22 @@ chat = ChatAnthropic(
 # --------------------------------------------------
 image_file = st.file_uploader(
     "Upload an image (PNG or JPG)",
-    type=["png", "jpg", "jpeg"]
+    type=["png", "jpg", "jpeg"],
 )
-
 question = st.text_input(
     "Ask a question about the image",
-    placeholder="e.g. Where is this place?"
+    placeholder="e.g. Where is this place?",
 )
 
 reset_chat_on_new_image(image_file)
 
 if image_file is not None:
     st.image(image_file, caption=image_file.name, use_container_width=True)
+
+# Optional: add a manual reset button (helps when debugging)
+if st.button("Reset chat"):
+    st.session_state.messages = []
+    st.success("Chat reset.")
 
 # --------------------------------------------------
 # Action
@@ -124,10 +145,7 @@ if st.button("Analyze"):
 
     user_message = HumanMessage(
         content=[
-            {
-                "type": "text",
-                "text": question.strip(),
-            },
+            {"type": "text", "text": question.strip()},
             {
                 "type": "image",
                 "source": {
@@ -142,7 +160,12 @@ if st.button("Analyze"):
     st.session_state.messages.append(user_message)
 
     with st.spinner("Analyzing image..."):
-        response = chat.invoke(st.session_state.messages)
+        try:
+            response = chat.invoke(st.session_state.messages)
+        except Exception as e:
+            # show real error (won't leak your key)
+            st.error(str(e))
+            st.stop()
 
     st.session_state.messages.append(response)
 
@@ -154,9 +177,10 @@ st.subheader("Conversation")
 
 for msg in st.session_state.messages:
     if isinstance(msg, HumanMessage):
+        # first block is text
         text = msg.content[0]["text"]
         st.markdown(f"**You:** {text}")
-
     elif isinstance(msg, AIMessage):
         st.markdown(f"**Claude:** {msg.content}")
+
 
