@@ -42,7 +42,7 @@ if "current_image" not in st.session_state:
 def detect_media_type_from_bytes(uploaded_file) -> str:
     """
     Detect the real image format from bytes (do NOT trust uploaded_file.type).
-    Returns: 'image/jpeg' or 'image/png'
+    Returns: 'image/jpeg', 'image/png', or 'image/webp'
     """
     try:
         img = Image.open(uploaded_file)
@@ -54,31 +54,42 @@ def detect_media_type_from_bytes(uploaded_file) -> str:
             return "image/png"
         if name.endswith(".jpg") or name.endswith(".jpeg"):
             return "image/jpeg"
-        raise ValueError("Could not detect image type. Please upload a PNG or JPG.")
+        if name.endswith(".webp"):
+            return "image/webp"
+        raise ValueError("Could not detect image type. Please upload PNG, JPG, or WEBP.")
 
     if fmt == "PNG":
         return "image/png"
     if fmt in ("JPEG", "JPG"):
         return "image/jpeg"
+    if fmt == "WEBP":
+        return "image/webp"
 
-    raise ValueError(f"Unsupported image format: {fmt}. Please upload a PNG or JPG.")
+    raise ValueError(f"Unsupported image format: {fmt}. Please upload PNG, JPG, or WEBP.")
 
 
 def encode_image(uploaded_file):
     """
-    Encode bytes to base64 and return (base64_data, media_type)
+    Encode bytes to base64 and return (base64_data, media_type).
     Media type is verified from the file bytes to avoid Anthropic 400 errors.
     """
-    # IMPORTANT: Image.open() moves the file pointer; reset it before reading bytes
     media_type = detect_media_type_from_bytes(uploaded_file)
+
+    # Image.open() can move the file pointer; reset before reading bytes
     uploaded_file.seek(0)
     data = base64.b64encode(uploaded_file.getvalue()).decode("utf-8")
+
     return data, media_type
 
 
 def reset_chat_on_new_image(uploaded_file):
+    """
+    Clear chat when a new image is uploaded, so old image blocks don't remain
+    in the conversation payload and cause format/mime issues.
+    """
     if uploaded_file is None:
         return
+
     if st.session_state.current_image != uploaded_file.name:
         st.session_state.current_image = uploaded_file.name
         st.session_state.messages = []
@@ -107,9 +118,10 @@ chat = ChatAnthropic(
 # UI
 # --------------------------------------------------
 image_file = st.file_uploader(
-    "Upload an image (PNG or JPG)",
-    type=["png", "jpg", "jpeg"],
+    "Upload an image (PNG / JPG / WEBP)",
+    type=["png", "jpg", "jpeg", "webp"],
 )
+
 question = st.text_input(
     "Ask a question about the image",
     placeholder="e.g. Where is this place?",
@@ -120,15 +132,20 @@ reset_chat_on_new_image(image_file)
 if image_file is not None:
     st.image(image_file, caption=image_file.name, use_container_width=True)
 
-# Optional: add a manual reset button (helps when debugging)
-if st.button("Reset chat"):
+col_a, col_b = st.columns(2)
+with col_a:
+    reset_clicked = st.button("Reset chat")
+with col_b:
+    analyze_clicked = st.button("Analyze")
+
+if reset_clicked:
     st.session_state.messages = []
     st.success("Chat reset.")
 
 # --------------------------------------------------
 # Action
 # --------------------------------------------------
-if st.button("Analyze"):
+if analyze_clicked:
     if image_file is None:
         st.warning("Please upload an image.")
         st.stop()
@@ -163,7 +180,7 @@ if st.button("Analyze"):
         try:
             response = chat.invoke(st.session_state.messages)
         except Exception as e:
-            # show real error (won't leak your key)
+            # show the real error message (won't leak your key)
             st.error(str(e))
             st.stop()
 
@@ -178,9 +195,14 @@ st.subheader("Conversation")
 for msg in st.session_state.messages:
     if isinstance(msg, HumanMessage):
         # first block is text
-        text = msg.content[0]["text"]
+        try:
+            text = msg.content[0]["text"]
+        except Exception:
+            text = str(msg.content)
         st.markdown(f"**You:** {text}")
+
     elif isinstance(msg, AIMessage):
         st.markdown(f"**Claude:** {msg.content}")
+
 
 
