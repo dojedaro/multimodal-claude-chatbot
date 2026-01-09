@@ -6,16 +6,19 @@ from dotenv import load_dotenv
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, AIMessage
 
-# -----------------------------
-# Config / Secrets
-# -----------------------------
+# --------------------------------------------------
+# Load secrets
+# --------------------------------------------------
 load_dotenv()
 
-API_KEY = os.getenv("ANTHROPIC_API_KEY")
-if not API_KEY:
-    st.error("Missing ANTHROPIC_API_KEY. Add it in Streamlit Cloud Secrets or a local .env file.")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+if not ANTHROPIC_API_KEY:
+    st.error("Missing ANTHROPIC_API_KEY. Add it in Streamlit Cloud Secrets or a .env file.")
     st.stop()
 
+# --------------------------------------------------
+# Page config
+# --------------------------------------------------
 st.set_page_config(
     page_title="Multimodal Image Q&A with Claude",
     page_icon="🔍",
@@ -23,65 +26,52 @@ st.set_page_config(
 )
 
 st.title("🔍 Multimodal Image Q&A with Claude")
-st.caption("Upload an image and ask a question. Uses Anthropic Claude via LangChain.")
+st.caption("Anthropic Claude + LangChain • Vision Q&A")
 
-# -----------------------------
+# --------------------------------------------------
+# Session state
+# --------------------------------------------------
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+if "current_image" not in st.session_state:
+    st.session_state.current_image = None
+
+# --------------------------------------------------
 # Helpers
-# -----------------------------
-def encode_image_and_type(uploaded_file):
+# --------------------------------------------------
+def encode_image(uploaded_file):
     """
-    Returns (base64_data, media_type) for Anthropic image blocks.
-    Ensures media_type matches the actual bytes to avoid 400 errors.
+    Strict encoder for Anthropic:
+    - Only PNG or JPEG
+    - media_type must match bytes exactly
     """
-    media_type = (uploaded_file.type or "").lower().strip()
+    media_type = uploaded_file.type.lower()
 
-    # Normalize common variants
     if media_type == "image/jpg":
         media_type = "image/jpeg"
 
-    # Fallback if browser/streamlit doesn't provide mime
-    if media_type not in ("image/jpeg", "image/png", "image/webp", "image/gif"):
-        # Try to infer from extension
-        name = (uploaded_file.name or "").lower()
-        if name.endswith(".png"):
-            media_type = "image/png"
-        elif name.endswith(".jpg") or name.endswith(".jpeg"):
-            media_type = "image/jpeg"
-        else:
-            media_type = "image/jpeg"  # safe fallback
+    if media_type not in ("image/jpeg", "image/png"):
+        raise ValueError("Only PNG and JPEG images are supported.")
 
     data = base64.b64encode(uploaded_file.getvalue()).decode("utf-8")
     return data, media_type
 
 
-def reset_chat_if_new_image(uploaded_file):
-    """
-    Clears chat history when a new image is uploaded to prevent
-    old image blocks from remaining in the conversation payload.
-    """
+def reset_chat_on_new_image(uploaded_file):
     if uploaded_file is None:
         return
 
-    current_name = uploaded_file.name
-    if st.session_state.get("current_image_name") != current_name:
-        st.session_state["current_image_name"] = current_name
-        st.session_state["messages"] = []
+    if st.session_state.current_image != uploaded_file.name:
+        st.session_state.current_image = uploaded_file.name
+        st.session_state.messages = []
 
 
-# -----------------------------
-# Session State
-# -----------------------------
-if "messages" not in st.session_state:
-    st.session_state["messages"] = []
-
-if "current_image_name" not in st.session_state:
-    st.session_state["current_image_name"] = None
-
-# -----------------------------
-# UI Controls
-# -----------------------------
+# --------------------------------------------------
+# Model
+# --------------------------------------------------
 model = st.selectbox(
-    "Select Claude model",
+    "Claude model",
     [
         "claude-3-haiku-20240307",
         "claude-3-sonnet-20240229",
@@ -96,35 +86,48 @@ chat = ChatAnthropic(
     max_tokens=800
 )
 
-image_file = st.file_uploader("Upload an image (PNG / JPG / JPEG)", type=["png", "jpg", "jpeg"])
-question = st.text_input("Ask a question about the image", placeholder="e.g., Where is this place? What objects do you see?")
+# --------------------------------------------------
+# UI
+# --------------------------------------------------
+image_file = st.file_uploader(
+    "Upload an image (PNG or JPG)",
+    type=["png", "jpg", "jpeg"]
+)
 
-# Reset chat if user uploads a different image
-reset_chat_if_new_image(image_file)
+question = st.text_input(
+    "Ask a question about the image",
+    placeholder="e.g. Where is this place?"
+)
 
-# Show image preview
+reset_chat_on_new_image(image_file)
+
 if image_file is not None:
     st.image(image_file, caption=image_file.name, use_container_width=True)
 
-# -----------------------------
+# --------------------------------------------------
 # Action
-# -----------------------------
-analyze = st.button("Analyze")
-
-if analyze:
+# --------------------------------------------------
+if st.button("Analyze"):
     if image_file is None:
-        st.warning("Please upload an image first.")
+        st.warning("Please upload an image.")
         st.stop()
+
     if not question.strip():
-        st.warning("Please type a question.")
+        st.warning("Please enter a question.")
         st.stop()
 
-    encoded_image, media_type = encode_image_and_type(image_file)
+    try:
+        encoded_image, media_type = encode_image(image_file)
+    except Exception as e:
+        st.error(str(e))
+        st.stop()
 
-    # Build Anthropic-compatible multimodal message
-    user_msg = HumanMessage(
+    user_message = HumanMessage(
         content=[
-            {"type": "text", "text": question.strip()},
+            {
+                "type": "text",
+                "text": question.strip(),
+            },
             {
                 "type": "image",
                 "source": {
@@ -136,27 +139,24 @@ if analyze:
         ]
     )
 
-    st.session_state["messages"].append(user_msg)
+    st.session_state.messages.append(user_message)
 
-    with st.spinner("Analyzing..."):
-        response = chat.invoke(st.session_state["messages"])
+    with st.spinner("Analyzing image..."):
+        response = chat.invoke(st.session_state.messages)
 
-    st.session_state["messages"].append(response)
+    st.session_state.messages.append(response)
 
-# -----------------------------
+# --------------------------------------------------
 # Display chat
-# -----------------------------
+# --------------------------------------------------
 st.markdown("---")
-st.subheader("Chat")
+st.subheader("Conversation")
 
-for msg in st.session_state["messages"]:
+for msg in st.session_state.messages:
     if isinstance(msg, HumanMessage):
-        # HumanMessage content is a list of blocks. First block should be text.
-        try:
-            text_block = msg.content[0]["text"] if isinstance(msg.content, list) else str(msg.content)
-        except Exception:
-            text_block = str(msg.content)
-        st.markdown(f"**You:** {text_block}")
+        text = msg.content[0]["text"]
+        st.markdown(f"**You:** {text}")
 
     elif isinstance(msg, AIMessage):
         st.markdown(f"**Claude:** {msg.content}")
+
