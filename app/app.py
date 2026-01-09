@@ -55,16 +55,20 @@ question = st.text_input(
 if st.button("Analyze") and image_file and question:
     encoded_image = encode_image(image_file)
 
+    # Detect correct media type from upload (e.g., image/jpeg, image/png)
+    media_type = image_file.type  # Streamlit provides this
+
     message = HumanMessage(
         content=[
             {"type": "text", "text": question},
             {
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{encoded_image}",
-                    "detail": "auto"
-                }
-            }
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": encoded_image,
+                },
+            },
         ]
     )
 
