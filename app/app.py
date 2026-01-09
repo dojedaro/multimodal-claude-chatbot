@@ -5,7 +5,7 @@ from PIL import Image
 from dotenv import load_dotenv
 
 from langchain_anthropic import ChatAnthropic
-from langchain.schema.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage
 
 # Load environment variables
 load_dotenv()
