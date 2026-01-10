@@ -11,6 +11,31 @@ https://multimodal-claude-chatbot.streamlit.app/
 Upload an image (PNG / JPG / WEBP) and ask a question about it.  
 The app sends both the image and the question to a vision-capable Claude model and returns an intelligent, contextual response.
 
+Upload an image (PNG / JPG / WEBP) and ask a question about it.  
+The app sends both the image and the question to a vision-capable Claude model and returns an intelligent, contextual response.
+
+---
+
+## 🖥️ User Interface
+
+### Image Upload & Question Interface
+![User Interface](screenshots/User%20Interce.png)
+
+### Alternate UI View
+![User Interface 2](screenshots/User%20Interface%202.png)
+
+---
+
+## 🔍 Image Analysis Examples
+
+### Example 1 — Visual Understanding
+![Analysis Example 1](screenshots/Analysis%201.png)
+
+### Example 2 — Multimodal Reasoning
+![Analysis Example 2](screenshots/Analysis%202.png)
+
+---
+
 ---
 
 ## ▶️ Run locally
