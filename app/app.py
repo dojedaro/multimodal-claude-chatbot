@@ -101,17 +101,16 @@ def reset_chat_on_new_image(uploaded_file):
 model = st.selectbox(
     "Claude model",
     [
-        "claude-3-haiku-20240307",
-        "claude-3-sonnet-20240229",
-        "claude-3-opus-20240229",
+        "claude-haiku-5-5",
+        "claude-sonnet-5-5",
+        "claude-opus-5-5",
     ],
     index=0,
 )
 
 chat = ChatAnthropic(
     model=model,
-    temperature=0.7,
-    max_tokens=800,
+    max_tokens=4096,  # thinking is on by default on current models and counts toward this
 )
 
 # --------------------------------------------------
@@ -189,6 +188,13 @@ if analyze_clicked:
 # --------------------------------------------------
 # Display chat
 # --------------------------------------------------
+def ai_text(msg: AIMessage) -> str:
+    """Current Claude models can return thinking blocks before the answer; show only the text."""
+    if isinstance(msg.content, str):
+        return msg.content
+    return "".join(b.get("text", "") for b in msg.content if isinstance(b, dict) and b.get("type") == "text")
+
+
 st.markdown("---")
 st.subheader("Conversation")
 
@@ -202,7 +208,7 @@ for msg in st.session_state.messages:
         st.markdown(f"**You:** {text}")
 
     elif isinstance(msg, AIMessage):
-        st.markdown(f"**Claude:** {msg.content}")
+        st.markdown(f"**Claude:** {ai_text(msg)}")
 
 
 
