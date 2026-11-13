@@ -1,58 +1,60 @@
-# 🖼️ Multimodal Image Q&A with Claude
+# Multimodal Image Q&A with Claude
 
-A Streamlit-based multimodal chatbot that analyzes images and answers natural-language questions using **Anthropic Claude** and **LangChain**.
+**Upload an image and ask about it: charts, screenshots, photos, documents. A Streamlit chat app that sends the image and your question to Claude's vision model and keeps the conversation going.**
 
-🔗 **Live Demo**  
-https://multimodal-claude-chatbot.streamlit.app/
+**[Live demo →](https://multimodal-claude-chatbot.streamlit.app/)** (bring your own Anthropic API key; the app may take a few seconds to wake up)
 
----
+[![Notebook checks](https://github.com/dojedaro/multimodal-claude-chatbot/actions/workflows/notebooks.yml/badge.svg)](https://github.com/dojedaro/multimodal-claude-chatbot/actions/workflows/notebooks.yml)
 
-## 🚀 What this app does
-Upload an image (PNG / JPG / WEBP) and ask a question about it.  
-The app sends both the image and the question to a vision-capable Claude model and returns an intelligent, contextual response.
+![The app: image upload and question](screenshots/User%20Interce.png)
 
-Upload an image (PNG / JPG / WEBP) and ask a question about it.  
-The app sends both the image and the question to a vision-capable Claude model and returns an intelligent, contextual response.
+## Examples
 
----
+| | |
+|---|---|
+| ![Analysis example 1](screenshots/Analysis%201.png) | ![Analysis example 2](screenshots/Analysis%202.png) |
 
-## 🖥️ User Interface
+## How it works
 
-### Image Upload & Question Interface
-![User Interface](screenshots/User%20Interce.png)
+```mermaid
+flowchart LR
+    I[Image upload<br/>PNG, JPG, WEBP] --> B[Base64 encode<br/>with media type]
+    Q([question]) --> H[HumanMessage:<br/>image block + text block]
+    B --> H
+    H --> S[(session history)]
+    S --> C[ChatAnthropic<br/>Haiku, Sonnet or Opus 5.5]
+    C --> S
+    S --> V[Chat view:<br/>text blocks only]
+```
 
-### Alternate UI View
-![User Interface 2](screenshots/User%20Interface%202.png)
+- The image and question travel as one multimodal message (an image content block plus a text block),
+  so follow-up questions keep the image in context.
+- Conversation history lives in `st.session_state`, so the whole chat is sent on each turn.
+- Current Claude models can return thinking blocks before the answer; the chat view renders only the
+  text blocks.
 
----
+## Run it
 
-## 🔍 Image Analysis Examples
+```bash
+pip install -r requirements.txt
+cp .env.example .env          # add ANTHROPIC_API_KEY
+streamlit run app/app.py
+```
 
-### Example 1 — Visual Understanding
-![Analysis Example 1](screenshots/Analysis%201.png)
+`End_to_end_App_Anthropic.ipynb` is the notebook the app was developed in.
 
-### Example 2 — Multimodal Reasoning
-![Analysis Example 2](screenshots/Analysis%202.png)
+## Stack
 
----
+Python, Streamlit, LangChain (Anthropic integration), Claude vision, Pillow, python-dotenv.
 
----
+## Limitations and next steps
 
-## ▶️ Run locally
-📦 Install dependencies: `pip install -r requirements.txt`  
-📁 Create a .env file: `cp .env.example .env`  
-🔑 Add your API key: `ANTHROPIC_API_KEY=your_key_here`  
-▶️ Run the app: `streamlit run app/app.py`
+- Each turn resends the image. Prompt caching on the image block would cut cost and latency for
+  long conversations.
+- No evaluation of answer quality; a small labeled set (chart values, text in screenshots) would
+  measure it per model.
+- Large images are sent as-is; resizing to the model's useful resolution first would save tokens.
 
----
+## License
 
-## 🛠️ Tech Stack
-Python • Streamlit • Anthropic Claude (Haiku / Sonnet / Opus) • LangChain • Pillow • python-dotenv
-
----
-
-## 👤 Author
-Daniel Ojeda  
-GitHub: https://github.com/dojedaro
-
-
+MIT
