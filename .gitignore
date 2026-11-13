@@ -1,5 +1,6 @@
 .env
-*.yml
 __pycache__/
 .ipynb_checkpoints/
 logs.txt
+# Local Streamlit secrets; workflow files under .github stay tracked
+.streamlit/secrets.toml
